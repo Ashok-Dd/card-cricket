@@ -71,7 +71,15 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   Future<void> _toggleReady(bool ready) async {
     setState(() => _isBusy = true);
     try {
-      await ref.read(roomsRepositoryProvider).setReady(widget.code, ready);
+      // Apply the response directly instead of waiting on the room:updated
+      // broadcast to come back around — the acting player's own client
+      // should always reflect their own action immediately and reliably,
+      // not depend on their own socket round-tripping the change back to
+      // them. This was the actual bug: the HOST's screen (a different
+      // socket) picked up the broadcast fine, but the player who just
+      // tapped Ready sometimes didn't see their own tap take effect at all.
+      final room = await ref.read(roomsRepositoryProvider).setReady(widget.code, ready);
+      if (mounted) setState(() => _room = room);
     } catch (error) {
       if (mounted) setState(() => _errorText = describeApiError(error));
     } finally {

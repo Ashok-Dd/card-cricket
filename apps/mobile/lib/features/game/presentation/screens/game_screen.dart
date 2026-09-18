@@ -69,6 +69,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   /// second `statistic:selected` before the first has even been processed.
   bool _isSelectingStat = false;
 
+  /// True from confirming the forfeit dialog until the server's response
+  /// (game:finished, or a fresh game:state once eliminated) arrives — a
+  /// full-screen loader here so it's unmistakable that forfeiting is being
+  /// processed, not just a silent no-op.
+  bool _isForfeiting = false;
+
   Timer? _revealTimer;
   Timer? _flashTimer;
   Timer? _turnTicker;
@@ -103,6 +109,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       setState(() {
         _state = newState;
         _isSelectingStat = false;
+        _isForfeiting = false;
         if (_state!.tieState == null) _tie = null;
         if (decisionChanged) {
           _decisionKey = newDecisionKey;
@@ -157,14 +164,20 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _onFinished = (data) {
       if (!mounted) return;
       final finished = GameFinishedEvent.fromJson(Map<String, dynamic>.from(data as Map));
-      setState(() => _finished = finished);
+      setState(() {
+        _finished = finished;
+        _isForfeiting = false;
+      });
       _sound.play(finished.winnerId == _selfId ? GameSound.victory : GameSound.defeat);
       ref.invalidate(walletProvider);
     };
     _onError = (data) {
       if (!mounted) return;
       final message = (data as Map)['message']?.toString() ?? 'Something went wrong';
-      setState(() => _isSelectingStat = false);
+      setState(() {
+        _isSelectingStat = false;
+        _isForfeiting = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     };
 
@@ -241,7 +254,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
+      setState(() => _isForfeiting = true);
       _socket.emit('game:forfeit', {'gameId': widget.gameId});
     }
   }
@@ -268,6 +282,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     if (_tie != null && _finished == null) _TieBanner(tie: _tie!),
                     if (_comparison != null && _finished == null)
                       ComparisonOverlay(comparison: _comparison!, selfId: _selfId),
+                    if (_isForfeiting && _finished == null) const _ForfeitingOverlay(),
                     if (_finished != null)
                       VictoryOverlay(
                         finished: _finished!,
@@ -420,7 +435,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       children: [
                         if (!selfEliminated)
                           IconButton(
-                            onPressed: () => _confirmForfeit(),
+                            onPressed: _isForfeiting ? null : () => _confirmForfeit(),
                             icon: const Icon(Icons.flag_outlined, size: 20, color: AppColors.danger),
                             tooltip: 'Forfeit match',
                             visualDensity: VisualDensity.compact,
@@ -509,6 +524,32 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Shown from the moment forfeiting is confirmed until the server responds
+/// — a full-screen block rather than just the small stat-button spinner,
+/// since forfeiting immediately ends the match for this player and should
+/// read as unmistakably "this is happening now", not a quiet no-op.
+class _ForfeitingOverlay extends StatelessWidget {
+  const _ForfeitingOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Container(
+        color: AppColors.black.withValues(alpha: 0.75),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: AppColors.danger, strokeWidth: 2.5),
+            const SizedBox(height: 16),
+            Text('Forfeiting match…', style: AppTextStyles.title),
+          ],
+        ),
+      ),
     );
   }
 }
