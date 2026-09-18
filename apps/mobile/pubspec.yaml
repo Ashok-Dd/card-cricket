@@ -66,6 +66,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -80,6 +81,24 @@ flutter:
 
   assets:
     - assets/sounds/
+    - assets/icon/
+
+# App launcher icon — a gold cricket bat + ball on the app's navy/gold
+# theme (see core/theme/app_colors.dart), replacing the default Flutter
+# icon. Regenerate with `dart run flutter_launcher_icons` after changing
+# either source image.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon_full.png"
+  adaptive_icon_background: "#0A1220"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/icon_full.png"
+    background_color: "#0A1220"
+    theme_color: "#E8B84B"
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
