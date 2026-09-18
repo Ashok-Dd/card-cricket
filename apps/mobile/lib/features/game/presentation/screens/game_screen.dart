@@ -63,6 +63,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? _decisionKey;
   int _turnSecondsRemaining = _turnDurationSeconds;
 
+  /// True from the moment a stat is tapped until the server's response
+  /// (a fresh game:state, a comparison reveal, or a rejection) arrives —
+  /// blocks a second tap in that window instead of silently emitting a
+  /// second `statistic:selected` before the first has even been processed.
+  bool _isSelectingStat = false;
+
   Timer? _revealTimer;
   Timer? _flashTimer;
   Timer? _turnTicker;
@@ -96,6 +102,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       final decisionChanged = newDecisionKey != _decisionKey;
       setState(() {
         _state = newState;
+        _isSelectingStat = false;
         if (_state!.tieState == null) _tie = null;
         if (decisionChanged) {
           _decisionKey = newDecisionKey;
@@ -108,7 +115,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       if (!mounted) return;
       _revealTimer?.cancel();
       final comparison = ComparisonResult.fromJson(Map<String, dynamic>.from(data as Map));
-      setState(() => _comparison = comparison);
+      setState(() {
+        _comparison = comparison;
+        _isSelectingStat = false;
+      });
       final selfId = _selfId;
       if (comparison.winnerUserIds.length > 1) {
         _sound.play(GameSound.tie);
@@ -154,6 +164,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _onError = (data) {
       if (!mounted) return;
       final message = (data as Map)['message']?.toString() ?? 'Something went wrong';
+      setState(() => _isSelectingStat = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     };
 
@@ -209,6 +220,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? get _selfId => ref.read(authControllerProvider).valueOrNull?.id;
 
   void _selectStatistic(String statistic) {
+    if (_isSelectingStat) return;
+    setState(() => _isSelectingStat = true);
     _sound.play(GameSound.tap);
     _socket.emit('statistic:selected', {'gameId': widget.gameId, 'statistic': statistic});
   }
@@ -415,6 +428,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               const SizedBox(height: 16),
               if (selfEliminated)
                 _EliminatedPanel(onLeaveRoom: () => context.go('/home'))
+              else if (_isSelectingStat)
+                const _SubmittingStatIndicator()
               else if (isMyTurn && selectable.isNotEmpty)
                 Wrap(
                   alignment: WrapAlignment.center,
@@ -484,6 +499,36 @@ class _EliminatedPanel extends StatelessWidget {
             expand: false,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown in place of the stat buttons for the brief window between tapping
+/// one and the server's response arriving — a spinner here (rather than
+/// just disabling the buttons) is what actually stops a player from
+/// mashing a second tap during a slow connection, thinking the first one
+/// didn't register.
+class _SubmittingStatIndicator extends StatelessWidget {
+  const _SubmittingStatIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Text('Submitting…', style: AppTextStyles.body),
+          ],
+        ),
       ),
     );
   }

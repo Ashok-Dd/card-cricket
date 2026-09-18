@@ -255,6 +255,7 @@ class _LobbyContent extends StatelessWidget {
                 label: self.isReady ? 'Not Ready' : 'Ready',
                 icon: self.isReady ? Icons.close : Icons.check_circle_outline,
                 variant: self.isReady ? PremiumButtonVariant.danger : PremiumButtonVariant.secondary,
+                isLoading: isBusy,
                 onPressed: isBusy ? null : () => onToggleReady(!self.isReady),
               ),
             if (isHost) ...[
@@ -262,6 +263,7 @@ class _LobbyContent extends StatelessWidget {
               PremiumButton(
                 label: 'Start Game',
                 icon: Icons.play_arrow,
+                isLoading: isBusy,
                 onPressed: (isBusy || !canStart) ? null : onStart,
               ),
             ],
