@@ -1,0 +1,34 @@
+# Render Blueprint for the Card Cricket backend. Deploy via Render's
+# "New +" -> "Blueprint" pointing at this repo, or configure the service
+# manually in the dashboard using these same settings.
+#
+# Database and Redis are NOT defined here as Render-managed add-ons — this
+# app already runs against externally provisioned Neon (Postgres) and
+# Upstash (Redis), set as secrets below. Swap to Render's own Postgres/Redis
+# services instead if preferred; nothing in the app code depends on which
+# provider hosts them.
+services:
+  - type: web
+    name: card-cricket-backend
+    runtime: docker
+    rootDir: apps/backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        sync: false # set to your Neon (or other Postgres) connection string
+      - key: REDIS_URL
+        sync: false # set to your Upstash (or other Redis) connection string — use rediss:// if it requires TLS
+      - key: REDIS_MOCK
+        value: "false"
+      - key: JWT_SECRET
+        sync: false # generate a real secret — never reuse the local dev value
+      - key: JWT_EXPIRES_IN_SECONDS
+        value: "604800"
+      - key: ECONOMY_WELCOME_BONUS_COINS
+        value: "1000"
+      - key: ECONOMY_MATCH_WIN_BONUS_COINS
+        value: "200"
+      - key: PORT
+        value: "3000"

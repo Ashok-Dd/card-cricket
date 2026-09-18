@@ -1,0 +1,26 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.iml
+
+# Defense-in-depth (apps/mobile and apps/backend each have their own
+# more specific .gitignore too)
+node_modules/
+.env
+.env.local
+
+# Raw Cricsheet ball-by-ball match archives (~1.2GB) — the one-time source
+# data for apps/backend/scripts/extract-cricket-data.mjs. Never committed;
+# the curated, extracted output it produces
+# (apps/backend/src/prisma-seed/generated/) is what's committed and what
+# `db:seed` actually reads.
+/ipl/
+/odi/
+/t20/
+/test/
+# A per-archive README.txt from the Cricsheet zip landed here during
+# extraction — leftover debris, not part of the app (the real project
+# readme is README.md).
+/README.txt

@@ -1,0 +1,426 @@
+// Card Cricket data model.
+// See docs/ARCHITECTURE.md at the repo root before changing this file.
+//
+// Core rule: one Player + many per-card-set PlayerStatistics profiles.
+// Never fork a player per format, and never compare stats across card sets.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & progression
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  avatarUrl    String?
+  level        Int      @default(1)
+  xp           Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallet           Wallet?
+  coinTransactions CoinTransaction[]
+  gamePlayers      GamePlayer[]
+  hostedRooms      Room[]              @relation("RoomHost")
+  roomPlayerships  RoomPlayer[]
+  achievements     UserAchievement[]
+  missions         UserMission[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Cricket domain data
+// ---------------------------------------------------------------------------
+
+enum PlayerRole {
+  BATSMAN
+  BOWLER
+  ALL_ROUNDER
+  WICKET_KEEPER
+}
+
+model Player {
+  id           String    @id @default(uuid())
+  name         String
+  displayName  String
+  country      String
+  countryFlag  String?
+  role         PlayerRole
+  battingStyle String?
+  bowlingStyle String?
+  team         String?
+  careerStart  Int?
+  careerEnd    Int?
+  imageUrl     String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  statistics PlayerStatistics[]
+  cards      Card[]
+
+  @@map("players")
+}
+
+/// One row per (player, cardSet) — the format-specific stat profile.
+model PlayerStatistics {
+  id         String  @id @default(uuid())
+  playerId   String
+  cardSetId  String
+
+  // Batting
+  matchesPlayed  Int?
+  inningsPlayed  Int?
+  notOuts        Int?
+  runs           Int?
+  highestScore   Int?
+  battingAverage Float?
+  ballsFaced     Int?
+  strikeRate     Float?
+  centuries      Int?
+  halfCenturies  Int?
+  fours          Int?
+  sixes          Int?
+
+  // Bowling
+  bowlingInnings Int?
+  overs          Float?
+  runsConceded   Int?
+  wickets        Int?
+  bestBowling    String?
+  bowlingAverage Float?
+  economyRate    Float?
+  bowlingStrikeRate Float?
+
+  // Fielding
+  catches    Int?
+  stumpings  Int?
+
+  dateOfBirth DateTime?
+
+  player  Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  cardSet CardSet @relation(fields: [cardSetId], references: [id], onDelete: Cascade)
+  cards   Card[]
+
+  @@unique([playerId, cardSetId])
+  @@map("player_statistics")
+}
+
+enum CardRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+  ICONIC
+}
+
+/// A card set is a selectable format/collection (IPL, ODI, TEST, T20, and any
+/// future set). Fully data-driven — never hardcode a set's identity or size
+/// in application code.
+model CardSet {
+  id            String   @id @default(uuid())
+  code          String   @unique // e.g. "IPL", "ODI", "TEST", "T20"
+  name          String
+  description   String?
+  isEnabled     Boolean  @default(true)
+  statSchema    Json     // which stat fields this set surfaces + display order
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  statistics PlayerStatistics[]
+  cards      Card[]
+  rooms      Room[]
+
+  @@map("card_sets")
+}
+
+/// A card is the in-game entity generated from a player + card set +
+/// statistics snapshot + presentation metadata (rarity/rating/image).
+model Card {
+  id          String     @id @default(uuid())
+  playerId    String
+  cardSetId   String
+  statisticsId String
+  rarity      CardRarity @default(COMMON)
+  rating      Int
+  imageUrl    String?
+  version     Int        @default(1)
+  createdAt   DateTime   @default(now())
+
+  player     Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  cardSet    CardSet          @relation(fields: [cardSetId], references: [id], onDelete: Cascade)
+  statistics PlayerStatistics @relation(fields: [statisticsId], references: [id], onDelete: Cascade)
+
+  gameRoundCards GameRoundCard[]
+
+  @@unique([playerId, cardSetId, version])
+  @@map("cards")
+}
+
+// ---------------------------------------------------------------------------
+// Rooms & lobby
+// ---------------------------------------------------------------------------
+
+enum RoomStatus {
+  LOBBY
+  STARTING
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+model Room {
+  id          String     @id @default(uuid())
+  code        String     @unique
+  hostId      String
+  cardSetId   String
+  entryAmount Int        @default(0)
+  maxPlayers  Int
+  /// How many cards from the chosen card set's full pool are actually
+  /// dealt into this match (e.g. 50/100/200) — null means "use every
+  /// eligible card in the set" (today's behavior, kept as the default so
+  /// existing rooms/tests aren't affected). Validated against the set's
+  /// real card count at room-creation time (rooms.service.ts).
+  deckSize    Int?
+  status      RoomStatus @default(LOBBY)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  host    User    @relation("RoomHost", fields: [hostId], references: [id])
+  cardSet CardSet @relation(fields: [cardSetId], references: [id])
+  game    Game?
+  players RoomPlayer[]
+
+  @@map("rooms")
+}
+
+/// Who is actually sitting in the lobby (and their ready state) — distinct
+/// from GamePlayer, which only exists once the host starts the match. See
+/// docs/GAME_RULES.md.
+model RoomPlayer {
+  id       String   @id @default(uuid())
+  roomId   String
+  userId   String
+  isReady  Boolean  @default(false)
+  joinedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([roomId, userId])
+  @@map("room_players")
+}
+
+// ---------------------------------------------------------------------------
+// Match / game engine (authoritative history — live state lives in Redis)
+// ---------------------------------------------------------------------------
+
+enum GameStatus {
+  WAITING
+  STARTING
+  DEALING
+  IN_PROGRESS
+  FINISHED
+  ABORTED
+}
+
+model Game {
+  id         String     @id @default(uuid())
+  roomId     String     @unique
+  cardSetId  String
+  status     GameStatus @default(WAITING)
+  winnerId   String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  room             Room              @relation(fields: [roomId], references: [id])
+  players          GamePlayer[]
+  rounds           GameRound[]
+  events           GameEvent[]
+  coinTransactions CoinTransaction[]
+
+  @@map("games")
+}
+
+model GamePlayer {
+  id           String   @id @default(uuid())
+  gameId       String
+  userId       String
+  seatOrder    Int
+  finalRank    Int?
+  isEliminated Boolean  @default(false)
+  eliminatedAtRound Int?
+  cardsWonCount     Int @default(0)
+  joinedAt     DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([gameId, userId])
+  @@map("game_players")
+}
+
+/// One row per round: the statistic chosen, the comparison result, and the
+/// winner. A tie sequence (multiple statistics tried on the same cards)
+/// produces multiple GameRound rows sharing the same roundNumber.
+model GameRound {
+  id              String   @id @default(uuid())
+  gameId          String
+  roundNumber     Int
+  tieSequenceStep Int      @default(0)
+  statistic       String
+  values          Json     // { userId: value } for every active player
+  winnerId        String?
+  wasTie          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  game  Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  cards GameRoundCard[]
+
+  @@map("game_rounds")
+}
+
+/// Which physical card each player played in a given round (for
+/// deterministic, auditable card-collection history).
+model GameRoundCard {
+  id          String @id @default(uuid())
+  gameRoundId String
+  cardId      String
+  ownerUserId String
+
+  gameRound GameRound @relation(fields: [gameRoundId], references: [id], onDelete: Cascade)
+  card      Card      @relation(fields: [cardId], references: [id])
+
+  @@map("game_round_cards")
+}
+
+/// Append-only audit log of every server-processed game event — used for
+/// reconnection/recovery and for diagnosing disputed rounds.
+model GameEvent {
+  id        String   @id @default(uuid())
+  gameId    String
+  type      String
+  payload   Json
+  sequence  Int
+  createdAt DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, sequence])
+  @@map("game_events")
+}
+
+// ---------------------------------------------------------------------------
+// Virtual coin economy — see docs/ECONOMY.md
+// ---------------------------------------------------------------------------
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("wallets")
+}
+
+enum CoinTransactionType {
+  WELCOME_REWARD
+  DAILY_REWARD
+  GAME_ENTRY
+  GAME_REWARD
+  ACHIEVEMENT_REWARD
+  TOURNAMENT_REWARD
+  REFUND
+  ADMIN_ADJUSTMENT
+}
+
+/// Immutable ledger. Never mutate a row; every balance change is a new row.
+/// idempotencyKey prevents double-processing the same client request.
+model CoinTransaction {
+  id             String              @id @default(uuid())
+  userId         String
+  type           CoinTransactionType
+  amount         Int
+  balanceAfter   Int
+  gameId         String?
+  description    String?
+  idempotencyKey String              @unique
+  createdAt      DateTime            @default(now())
+
+  user User  @relation(fields: [userId], references: [id])
+  game Game? @relation(fields: [gameId], references: [id])
+
+  @@map("coin_transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Progression (architecture placeholders — not built out in MVP)
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          String @id @default(uuid())
+  code        String @unique
+  name        String
+  description String
+  xpReward    Int    @default(0)
+  coinReward  Int    @default(0)
+
+  users UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model Mission {
+  id          String @id @default(uuid())
+  code        String @unique
+  name        String
+  description String
+  targetCount Int
+  xpReward    Int    @default(0)
+  coinReward  Int    @default(0)
+
+  users UserMission[]
+
+  @@map("missions")
+}
+
+model UserMission {
+  id          String    @id @default(uuid())
+  userId      String
+  missionId   String
+  progress    Int       @default(0)
+  completedAt DateTime?
+
+  user    User    @relation(fields: [userId], references: [id])
+  mission Mission @relation(fields: [missionId], references: [id])
+
+  @@unique([userId, missionId])
+  @@map("user_missions")
+}
