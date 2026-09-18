@@ -13,7 +13,18 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   @override
   Future<AuthUser?> build() async {
     final token = await ref.read(secureStorageServiceProvider).readAuthToken();
-    if (token == null) return null;
+    if (token == null) {
+      // No stored session (fresh install, or never logged in yet) means
+      // this build() would otherwise return immediately without sending
+      // anything — leaving the backend cold until the user's *next* action
+      // (tapping Log in) becomes the actual first request. Ping it now
+      // instead, while the splash screen's "waking up" wait already covers
+      // it, so the login/register form is hitting an already-warm server.
+      // Best-effort: a failure here just means "still cold", not an error
+      // worth surfacing — the login/register call itself will retry it.
+      await ref.read(authRepositoryProvider).ping().catchError((_) {});
+      return null;
+    }
 
     try {
       final user = await ref.read(authRepositoryProvider).me();

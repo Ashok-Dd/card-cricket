@@ -41,6 +41,17 @@ class AuthRepository {
     final response = await _dio.get('/auth/me');
     return AuthUser.fromJson(response.data as Map<String, dynamic>);
   }
+
+  /// A lightweight, unauthenticated call whose only purpose is to make sure
+  /// *some* request has reached the backend as early as possible — see
+  /// AuthController.build(): a brand-new user with no stored token skips
+  /// straight past `me()` and would otherwise send nothing at all until
+  /// they actually submit the login form, turning that tap into the first
+  /// real request and eating a cold-start delay at the worst possible
+  /// moment instead of during the splash screen's passive wait.
+  Future<void> ping() async {
+    await _dio.get('/');
+  }
 }
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
