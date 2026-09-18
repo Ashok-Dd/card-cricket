@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 
 /// A countdown ring around a player's avatar for the active turn — green
-/// above 20s, orange 10-20s, red under 10s. Client-side visual only for
-/// now: nothing happens automatically at 0 (no server-enforced timeout/
-/// auto-forfeit yet — see the game-engine follow-up note).
+/// above 20s, orange 10-20s, red under 10s. Purely a display of the real
+/// deadline: the server enforces the actual 30s timeout and auto-forfeit
+/// on its own clock regardless of what this shows (game-engine.service.ts
+/// TURN_TIMEOUT_MS) — a mismatch here would only make the UI lie about
+/// when that happens, not change the real outcome.
 class TurnTimerRing extends StatelessWidget {
   const TurnTimerRing({
     required this.child,

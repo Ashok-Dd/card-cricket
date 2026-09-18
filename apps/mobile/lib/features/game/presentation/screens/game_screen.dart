@@ -334,6 +334,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Widget _buildBoard(GameStateSnapshot state) {
     final selfId = _selfId;
     final selfPlayer = state.players.where((p) => p.userId == selfId).firstOrNull;
+    final opponentPlayer = state.players.where((p) => p.userId != selfId).firstOrNull;
     final myCard = state.myCard;
     final isMyTurn = state.status == 'PLAYER_TURN' && state.currentPlayerId == selfId;
     final usedStats = state.tieState?.usedStatistics ?? const [];
@@ -360,15 +361,25 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     Text('ROUND ${state.roundNumber}', style: AppTextStyles.overline),
                     Row(
                       children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isMyTurn ? AppColors.electricGreen : AppColors.textMuted,
+                        if (!isMyTurn && opponentPlayer != null && !opponentPlayer.isEliminated) ...[
+                          TurnTimerRing(
+                            isActive: true,
+                            secondsRemaining: _turnSecondsRemaining,
+                            size: 22,
+                            child: const _MiniOpponentAvatar(),
                           ),
-                        ),
-                        const SizedBox(width: 6),
+                          const SizedBox(width: 6),
+                        ] else ...[
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.electricGreen,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         Text(
                           isMyTurn ? 'YOUR TURN' : "OPPONENT'S TURN",
                           style: AppTextStyles.overline.copyWith(
@@ -456,6 +467,23 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+/// A generic silhouette for the header's compact opponent turn-timer ring —
+/// unlike the self avatar, the opponent's actual card (and so their role
+/// icon) is hidden per docs/GAME_RULES.md, so this can't show anything
+/// player-specific.
+class _MiniOpponentAvatar extends StatelessWidget {
+  const _MiniOpponentAvatar();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CircleAvatar(
+      radius: 8,
+      backgroundColor: AppColors.navyElevated,
+      child: Icon(Icons.person, size: 11, color: AppColors.textSecondary),
     );
   }
 }

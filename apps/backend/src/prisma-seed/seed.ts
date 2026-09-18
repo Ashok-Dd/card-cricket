@@ -110,6 +110,10 @@ interface GeneratedPlayer {
   role: keyof typeof PlayerRole;
   team?: string;
   imageUrl?: string | null;
+  /// The player's real full name, resolved from the matched Wikipedia page
+  /// (fetch-player-images.mjs) — `name`/`displayName` above are Cricsheet's
+  /// abbreviated form ("V Kohli", "JJ Bumrah"), not the name to show users.
+  resolvedName?: string | null;
   cards: Partial<Record<CardSetCode | 'ODI', GeneratedCardStats>>;
 }
 
@@ -173,10 +177,14 @@ async function main() {
     if (cardEntries.length === 0) continue; // this player's only card(s) were in the skipped ODI set
 
     const playerId = randomUUID();
+    // Prefer the real full name resolved from Wikipedia over Cricsheet's
+    // abbreviated form — falls back to the short name for the (still
+    // common) case where no confident match was found.
+    const realName = playerSeed.resolvedName ?? playerSeed.displayName;
     playerRows.push({
       id: playerId,
-      name: playerSeed.name,
-      displayName: playerSeed.displayName,
+      name: realName,
+      displayName: realName,
       country: playerSeed.country,
       role: PlayerRole[playerSeed.role],
       team: playerSeed.team,
