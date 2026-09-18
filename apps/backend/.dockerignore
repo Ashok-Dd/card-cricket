@@ -3,3 +3,13 @@ dist
 .env
 .env.local
 *.log
+# Never ship the host machine's generated Prisma client into the build
+# context — the Dockerfile's own `RUN npx prisma generate` produces a fresh,
+# clean one inside the container. Without this, `COPY src ./src` silently
+# overwrote that fresh generation with whatever sat in this local checkout's
+# src/generated/prisma (regenerated many times over a long dev session,
+# potentially an inconsistent mix of files from different generator runs),
+# causing `Cannot find module '.../internal/class.ts'` at container startup
+# — a working local build has no reason to expose this, so it only ever
+# surfaces inside Docker.
+src/generated
