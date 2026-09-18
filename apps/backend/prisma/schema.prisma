@@ -5,8 +5,18 @@
 // Never fork a player per format, and never compare stats across card sets.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider           = "prisma-client"
+  output             = "../src/generated/prisma"
+  // Without this, the "prisma-client" generator can non-deterministically
+  // emit relative imports as `./internal/class.ts` instead of `.ts`'s
+  // compiled `.js` counterpart — compiles fine (tsc doesn't rewrite
+  // extensions, it just keeps whatever the generator wrote), but crashes
+  // at runtime with ERR_MODULE_NOT_FOUND since dist/ only ever has the
+  // compiled .js file. Reproduced only in Render's Docker build, never in
+  // local dev, which is exactly the environment-dependent generator
+  // inconsistency this pins away. See prisma/orm generator docs for
+  // `importFileExtension`.
+  importFileExtension = "js"
 }
 
 datasource db {

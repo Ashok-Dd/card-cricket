@@ -9,10 +9,18 @@ RUN npm ci
 
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN npx prisma generate
-
 COPY tsconfig*.json nest-cli.json ./
 COPY src ./src
+
+# Generating AFTER copying src, with an explicit wipe first, guarantees
+# this is the last word on what's in src/generated/prisma no matter what —
+# .dockerignore alone was supposed to keep this host's own (gitignored,
+# regenerated-many-times) generated client out of the build context, but
+# the exact same "Cannot find module '.../internal/class.ts'" crash kept
+# recurring even after fixing that, so this no longer trusts .dockerignore
+# as the only line of defense.
+RUN rm -rf src/generated/prisma && npx prisma generate
+
 RUN npm run build
 
 FROM node:22-alpine AS runtime
