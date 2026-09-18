@@ -8,6 +8,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/glass_panel.dart';
 import '../../../shared/widgets/premium_button.dart';
+import '../../../shared/widgets/slow_request_hint.dart';
 import '../domain/auth_controller.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -121,6 +122,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           ],
                           const SizedBox(height: 20),
                           PremiumButton(label: 'Register', onPressed: _submit, isLoading: isLoading),
+                          SlowRequestHint(isLoading: isLoading),
                         ],
                       ),
                     ),

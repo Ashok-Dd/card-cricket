@@ -15,12 +15,16 @@ class ApiClient {
       : dio = Dio(
           BaseOptions(
             baseUrl: AppConstants.apiBaseUrl,
-            // Generous enough to survive a Render free-tier cold start (the
-            // backend's container can take 30-50s to spin back up after
-            // being idle) — see SplashScreen for the "waking up" UI shown
-            // to the user while the very first request is in flight.
-            connectTimeout: const Duration(seconds: 60),
-            receiveTimeout: const Duration(seconds: 60),
+            // Generous enough to survive a Render free-tier cold start.
+            // 60s wasn't quite enough in practice — a real cold start hit
+            // the old receiveTimeout and surfaced as a raw Dio exception
+            // mid-login, not just at app launch (which has its own
+            // "waking up" splash-screen animation covering the /auth/me
+            // check specifically). 100s leaves real margin; api_error.dart
+            // also gives this a friendly message instead of the raw
+            // exception text if it's ever hit anyway.
+            connectTimeout: const Duration(seconds: 100),
+            receiveTimeout: const Duration(seconds: 100),
           ),
         ) {
     dio.interceptors.add(
