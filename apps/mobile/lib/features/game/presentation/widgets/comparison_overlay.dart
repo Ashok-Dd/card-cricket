@@ -19,7 +19,15 @@ class ComparisonOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iWon = comparison.winnerUserIds.contains(selfId);
+    // A tie's `winnerUserIds` deliberately lists every contesting player
+    // (that's how the server tells the client "these are the ones still in
+    // it"), so checking membership alone made BOTH tied players see "YOU
+    // WIN THIS ROUND!" here — the tie banner only corrected the picture a
+    // moment later via a separate event, layered on top of the wrong
+    // message underneath instead of replacing it. An outright win requires
+    // exactly one winner.
+    final isOutrightWin = comparison.winnerUserIds.length == 1;
+    final iWon = isOutrightWin && comparison.winnerUserIds.contains(selfId);
 
     return Positioned.fill(
       child: Container(
@@ -43,7 +51,9 @@ class ComparisonOverlay extends StatelessWidget {
                 for (final revealed in comparison.cards)
                   _RevealedPlayer(
                     revealed: revealed,
-                    isWinner: comparison.winnerUserIds.contains(revealed.userId),
+                    // No individual "WINNER" badge during a tie either —
+                    // nobody has actually won this comparison yet.
+                    isWinner: isOutrightWin && comparison.winnerUserIds.contains(revealed.userId),
                     isSelf: revealed.userId == selfId,
                   ),
               ],

@@ -53,6 +53,13 @@ If two or more players tie on the highest value for the chosen statistic:
 - Collected-card ordering into the winner's pile must be deterministic per the server's rules (not client-decided, not random at collection time).
 - The winner takes the next turn.
 
+## Forfeiting
+
+- An active (not yet eliminated) player may voluntarily concede the match at any time.
+- Their entire remaining deck moves immediately to the next player in turn order — exactly like a lives-exhausted timeout elimination — so the "owns every card" win condition stays reachable.
+- If only one player remains after that, the match ends immediately with them as winner (same reward flow as a normal win). Otherwise the match continues, turn passing to whoever received the forfeited deck.
+- Distinct from the anti-stall lives system: forfeiting never touches `livesRemaining` — it's a deliberate quit, not a stall penalty.
+
 ## Elimination
 
 - A player reaching zero cards is eliminated: removed from comparisons, but stays connected as a spectator (not force-disconnected) until the match ends. UI must clearly mark `ELIMINATED`.

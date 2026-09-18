@@ -11,6 +11,10 @@ export const GameClientEvent = {
   SubscribeGame: 'game:subscribe',
   /// The one real gameplay action: "I choose this statistic."
   SelectStatistic: 'statistic:selected',
+  /// A player voluntarily concedes an in-progress match — an immediate,
+  /// deliberate "I quit", distinct from the anti-stall timeout/lives system
+  /// (game-engine.service.ts's TURN_TIMEOUT_STARTING_LIVES).
+  ForfeitMatch: 'game:forfeit',
 } as const;
 
 export const GameServerEvent = {

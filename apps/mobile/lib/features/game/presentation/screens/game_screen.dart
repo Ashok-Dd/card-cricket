@@ -219,6 +219,33 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   String? get _selfId => ref.read(authControllerProvider).valueOrNull?.id;
 
+  Future<void> _confirmForfeit() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.navyElevated,
+        title: Text('Forfeit match?', style: AppTextStyles.title),
+        content: Text(
+          'You\'ll lose your entire deck to your opponent and this counts as a loss. This can\'t be undone.',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('Cancel', style: AppTextStyles.body),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('Forfeit', style: AppTextStyles.body.copyWith(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _socket.emit('game:forfeit', {'gameId': widget.gameId});
+    }
+  }
+
   void _selectStatistic(String statistic) {
     if (_isSelectingStat) return;
     setState(() => _isSelectingStat = true);
@@ -388,13 +415,28 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                         ),
                       ],
                     ),
-                    IconButton(
-                      onPressed: () => _showDeckCounts(state),
-                      icon: const Icon(Icons.style_outlined, size: 20, color: AppColors.textSecondary),
-                      tooltip: 'Show deck counts',
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!selfEliminated)
+                          IconButton(
+                            onPressed: () => _confirmForfeit(),
+                            icon: const Icon(Icons.flag_outlined, size: 20, color: AppColors.danger),
+                            tooltip: 'Forfeit match',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        const SizedBox(width: 14),
+                        IconButton(
+                          onPressed: () => _showDeckCounts(state),
+                          icon: const Icon(Icons.style_outlined, size: 20, color: AppColors.textSecondary),
+                          tooltip: 'Show deck counts',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
                     ),
                   ],
                 ),

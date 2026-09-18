@@ -456,6 +456,88 @@ export class GameEngineService {
     });
   }
 
+  /// A player voluntarily concedes an in-progress match. Their entire
+  /// remaining deck moves immediately to the next player in turn order
+  /// (exactly like a lives-exhausted timeout elimination) so the "owns
+  /// every card" win condition stays reachable, and the game either ends
+  /// (if only one player is left) or continues to that next player's fresh
+  /// turn. Unlike a timeout, this never touches `livesRemaining` — it's a
+  /// deliberate quit, not an anti-stall penalty.
+  forfeitMatch(gameId: string, userId: string): Promise<void> {
+    return this.lock.withLock(gameId, () => this.doForfeitMatch(gameId, userId));
+  }
+
+  private async doForfeitMatch(gameId: string, userId: string): Promise<void> {
+    const state = await this.stateStore.load(gameId);
+
+    if (state.status === 'GAME_FINISHED') {
+      throw new BadRequestException('This game has already finished');
+    }
+    const forfeiter = state.players.find((p) => p.userId === userId);
+    if (!forfeiter) {
+      throw new ForbiddenException('You are not a player in this game');
+    }
+    if (forfeiter.isEliminated) {
+      throw new BadRequestException('You are already eliminated from this game');
+    }
+
+    // Whatever decision was pending (this player's own turn, or someone
+    // else's) no longer matters once they've quit — clear it now so a
+    // stale timeout can't also fire for a state this is about to replace.
+    this.turnTimer.clear(gameId);
+
+    const activeIds = state.players.filter((p) => !p.isEliminated).map((p) => p.userId);
+    const idx = activeIds.indexOf(userId);
+    const nextPlayerId = activeIds[(idx + 1) % activeIds.length]!;
+    const nextPlayer = state.players.find((p) => p.userId === nextPlayerId)!;
+
+    const gameRound = await this.writeGameRound(state, 'FORFEIT', {}, nextPlayerId, false);
+
+    if (forfeiter.cardIds.length > 0) {
+      for (const cardId of forfeiter.cardIds) {
+        await this.prisma.gameRoundCard.create({
+          data: { gameRoundId: gameRound.id, cardId, ownerUserId: nextPlayerId },
+        });
+      }
+      nextPlayer.cardsWonCount += forfeiter.cardIds.length;
+      nextPlayer.cardIds.push(...forfeiter.cardIds);
+      forfeiter.cardIds = [];
+    }
+
+    forfeiter.isEliminated = true;
+    state.eliminationOrder.push(userId);
+    await this.prisma.gamePlayer.updateMany({
+      where: { gameId, userId },
+      data: { isEliminated: true, eliminatedAtRound: state.roundNumber },
+    });
+    this.realtime.broadcastToGame(gameId, GameServerEvent.PlayerEliminated, {
+      userId,
+      atRound: state.roundNumber,
+      reason: 'FORFEITED',
+    });
+
+    await this.prisma.gamePlayer.updateMany({
+      where: { gameId, userId: nextPlayerId },
+      data: { cardsWonCount: nextPlayer.cardsWonCount },
+    });
+
+    const remaining = state.players.filter((p) => !p.isEliminated);
+    state.tieState = null;
+
+    if (remaining.length <= 1) {
+      await this.finishGame(state, remaining[0]?.userId ?? nextPlayerId);
+      return;
+    }
+
+    state.roundNumber += 1;
+    state.currentPlayerId = nextPlayerId;
+    state.roundActivePlayerIds = remaining.map((p) => p.userId);
+
+    await this.stateStore.save(state);
+    await this.broadcastFreshState(state);
+    this.scheduleTurnTimeout(state);
+  }
+
   /// Identifies "whose decision is this, and which decision" — mirrors the
   /// Flutter client's own key (game_screen.dart's `_decisionKeyFor`). A tie
   /// keeps the same currentPlayerId across several picks (the same player

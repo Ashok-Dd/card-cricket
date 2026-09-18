@@ -341,4 +341,87 @@ describe('GameEngineService.selectStatistic', () => {
       );
     });
   });
+
+  describe('forfeitMatch', () => {
+    it("ends the game immediately in a 2-player match, handing the forfeiter's whole deck to the opponent", async () => {
+      const state = makeState({
+        players: [
+          { userId: 'p1', cardIds: ['card-p1', 'reserve-1'], isEliminated: false, cardsWonCount: 0, livesRemaining: 3 },
+          { userId: 'p2', cardIds: ['card-p2'], isEliminated: false, cardsWonCount: 0, livesRemaining: 3 },
+        ],
+      });
+      setup(state, [
+        makeCard('card-p1', { runs: 100 }),
+        makeCard('reserve-1', { runs: 1 }),
+        makeCard('card-p2', { runs: 50 }),
+      ]);
+
+      await engine.forfeitMatch('game-1', 'p1');
+
+      const final = stateStore.getCurrent();
+      const p1 = final.players.find((p) => p.userId === 'p1')!;
+      const p2 = final.players.find((p) => p.userId === 'p2')!;
+
+      expect(p1.isEliminated).toBe(true);
+      expect(p1.cardIds).toEqual([]);
+      expect(p2.cardIds).toEqual(expect.arrayContaining(['card-p1', 'reserve-1', 'card-p2']));
+      expect(p2.cardIds.length).toBe(3);
+      expect(final.status).toBe('GAME_FINISHED');
+      expect(final.winnerId).toBe('p2');
+      expect(realtime.broadcastToGame).toHaveBeenCalledWith(
+        'game-1',
+        'player:eliminated',
+        expect.objectContaining({ userId: 'p1', reason: 'FORFEITED' }),
+      );
+      expect(walletService.creditGameReward).toHaveBeenCalledWith(
+        expect.anything(),
+        'p2',
+        'game-1',
+        expect.any(Number),
+        expect.any(String),
+      );
+    });
+
+    it('passes the forfeiter\'s deck to the next player and continues when 3+ players remain', async () => {
+      const state = makeState({
+        players: [
+          { userId: 'p1', cardIds: ['card-p1'], isEliminated: false, cardsWonCount: 0, livesRemaining: 3 },
+          { userId: 'p2', cardIds: ['card-p2'], isEliminated: false, cardsWonCount: 0, livesRemaining: 3 },
+          { userId: 'p3', cardIds: ['card-p3'], isEliminated: false, cardsWonCount: 0, livesRemaining: 3 },
+        ],
+        roundActivePlayerIds: ['p1', 'p2', 'p3'],
+      });
+      setup(state, [
+        makeCard('card-p1', { runs: 100 }),
+        makeCard('card-p2', { runs: 50 }),
+        makeCard('card-p3', { runs: 30 }),
+      ]);
+
+      await engine.forfeitMatch('game-1', 'p2');
+
+      const final = stateStore.getCurrent();
+      const p2 = final.players.find((p) => p.userId === 'p2')!;
+      const p3 = final.players.find((p) => p.userId === 'p3')!;
+
+      expect(p2.isEliminated).toBe(true);
+      expect(p2.cardIds).toEqual([]);
+      expect(p3.cardIds).toContain('card-p2');
+      expect(final.status).not.toBe('GAME_FINISHED');
+      expect(final.currentPlayerId).toBe('p3');
+      expect(final.roundActivePlayerIds).toEqual(['p1', 'p3']);
+    });
+
+    it('rejects forfeiting a game that already finished', async () => {
+      const state = makeState({ status: 'GAME_FINISHED' });
+      setup(state, [makeCard('card-p1', { runs: 100 }), makeCard('card-p2', { runs: 50 })]);
+
+      await expect(engine.forfeitMatch('game-1', 'p1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects forfeiting when not a player in this game', async () => {
+      setup(makeState(), [makeCard('card-p1', { runs: 100 }), makeCard('card-p2', { runs: 50 })]);
+
+      await expect(engine.forfeitMatch('game-1', 'ghost')).rejects.toThrow(ForbiddenException);
+    });
+  });
 });

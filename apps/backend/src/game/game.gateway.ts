@@ -129,4 +129,16 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       socket.emit(GameServerEvent.Error, { message: (error as Error).message });
     }
   }
+
+  @SubscribeMessage(GameClientEvent.ForfeitMatch)
+  async onForfeitMatch(socket: Socket, data: { gameId: string }): Promise<void> {
+    const user = this.currentUser(socket);
+    if (!user) return;
+
+    try {
+      await this.gameEngine.forfeitMatch(data.gameId, user.id);
+    } catch (error) {
+      socket.emit(GameServerEvent.Error, { message: (error as Error).message });
+    }
+  }
 }
